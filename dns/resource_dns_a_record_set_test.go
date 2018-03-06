@@ -3,6 +3,7 @@ package dns
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/helper/schema"
@@ -37,8 +38,11 @@ func TestAccDnsARecordSet_Basic(t *testing.T) {
 
 func testAccCheckDnsARecordSetDestroy(s *terraform.State) error {
 	meta := testAccProvider.Meta()
-	c := meta.(*DNSClient).c
-	srv_addr := meta.(*DNSClient).srv_addr
+	c := meta.(*DNSUpdater).Read.c
+	srv_addr := meta.(*DNSUpdater).Read.srv_addr
+	keyname := meta.(*DNSUpdater).Read.keyname
+	keyalgo := meta.(*DNSUpdater).Read.keyalgo
+
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "dns_a_record_set" {
 			continue
@@ -55,6 +59,11 @@ func testAccCheckDnsARecordSetDestroy(s *terraform.State) error {
 
 		msg := new(dns.Msg)
 		msg.SetQuestion(rec_fqdn, dns.TypeA)
+
+		if keyname != "" {
+			msg.SetTsig(keyname, keyalgo, 300, time.Now().Unix())
+		}
+
 		r, _, err := c.Exchange(msg, srv_addr)
 		if err != nil {
 			return fmt.Errorf("Error querying DNS record: %s", err)
@@ -87,11 +96,17 @@ func testAccCheckDnsARecordSetExists(t *testing.T, n string, addr []interface{})
 		rec_fqdn := fmt.Sprintf("%s.%s", rec_name, rec_zone)
 
 		meta := testAccProvider.Meta()
-		c := meta.(*DNSClient).c
-		srv_addr := meta.(*DNSClient).srv_addr
+		c := meta.(*DNSUpdater).Read.c
+		srv_addr := meta.(*DNSUpdater).Read.srv_addr
+		keyname := meta.(*DNSUpdater).Read.keyname
+		keyalgo := meta.(*DNSUpdater).Read.keyalgo
 
 		msg := new(dns.Msg)
 		msg.SetQuestion(rec_fqdn, dns.TypeA)
+
+		if keyname != "" {
+			msg.SetTsig(keyname, keyalgo, 300, time.Now().Unix())
+		}
 		r, _, err := c.Exchange(msg, srv_addr)
 		if err != nil {
 			return fmt.Errorf("Error querying DNS record: %s", err)

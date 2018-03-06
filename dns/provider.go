@@ -58,6 +58,50 @@ func Provider() terraform.ResourceProvider {
 					},
 				},
 			},
+			"read": &schema.Schema{
+				Type:     schema.TypeList,
+				MaxItems: 1,
+				Optional: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"server": &schema.Schema{
+							Type:        schema.TypeString,
+							Required:    true,
+							DefaultFunc: schema.EnvDefaultFunc("DNS_READ_SERVER", nil),
+						},
+						"port": &schema.Schema{
+							Type:     schema.TypeInt,
+							Optional: true,
+							DefaultFunc: func() (interface{}, error) {
+								if envPortStr := os.Getenv("DNS_READ_PORT"); envPortStr != "" {
+									port, err := strconv.Atoi(envPortStr)
+									if err != nil {
+										err = fmt.Errorf("invalid DNS_READ_PORT environment variable: %s", err)
+									}
+									return port, err
+								}
+
+								return 53, nil
+							},
+						},
+						"key_name": &schema.Schema{
+							Type:        schema.TypeString,
+							Optional:    true,
+							DefaultFunc: schema.EnvDefaultFunc("DNS_READ_KEYNAME", nil),
+						},
+						"key_algorithm": &schema.Schema{
+							Type:        schema.TypeString,
+							Optional:    true,
+							DefaultFunc: schema.EnvDefaultFunc("DNS_READ_KEYALGORITHM", nil),
+						},
+						"key_secret": &schema.Schema{
+							Type:        schema.TypeString,
+							Optional:    true,
+							DefaultFunc: schema.EnvDefaultFunc("DNS_READ_KEYSECRET", nil),
+						},
+					},
+				},
+			},
 		},
 
 		DataSourcesMap: map[string]*schema.Resource{
@@ -83,7 +127,9 @@ func Provider() terraform.ResourceProvider {
 func configureProvider(d *schema.ResourceData) (interface{}, error) {
 
 	var server, keyname, keyalgo, keysecret string
-	var port int
+	var readServer, readKeyname, readKeyalgo, readKeysecret string
+	var port, readPort int
+	var err error
 
 	// if the update block is missing, schema.EnvDefaultFunc is not called
 	if v, ok := d.GetOk("update"); ok {
@@ -110,7 +156,6 @@ func configureProvider(d *schema.ResourceData) (interface{}, error) {
 			return nil, nil
 		}
 		if len(os.Getenv("DNS_UPDATE_PORT")) > 0 {
-			var err error
 			portStr := os.Getenv("DNS_UPDATE_PORT")
 			port, err = strconv.Atoi(portStr)
 			if err != nil {
@@ -130,6 +175,52 @@ func configureProvider(d *schema.ResourceData) (interface{}, error) {
 		}
 	}
 
+	// if the update block is missing, schema.EnvDefaultFunc is not called
+	if v, ok := d.GetOk("read"); ok {
+		update := v.([]interface{})[0].(map[string]interface{})
+		if val, ok := update["port"]; ok {
+			port = int(val.(int))
+		}
+		if val, ok := update["server"]; ok {
+			server = val.(string)
+		}
+		if val, ok := update["key_name"]; ok {
+			keyname = val.(string)
+		}
+		if val, ok := update["key_algorithm"]; ok {
+			keyalgo = val.(string)
+		}
+		if val, ok := update["key_secret"]; ok {
+			keysecret = val.(string)
+		}
+	} else {
+		if len(os.Getenv("DNS_READ_SERVER")) > 0 {
+			readServer = os.Getenv("DNS_READ_SERVER")
+		} else {
+			//If not defined, use update config
+			readServer = server
+		}
+		if len(os.Getenv("DNS_READ_PORT")) > 0 {
+			readPortStr := os.Getenv("DNS_READ_PORT")
+			readPort, err = strconv.Atoi(readPortStr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid DNS_READ_PORT environment variable: %s", err)
+			}
+		} else {
+			readPort = port
+		}
+		if len(os.Getenv("DNS_READ_KEYNAME")) > 0 {
+			readKeyname = os.Getenv("DNS_READ_KEYNAME")
+		}
+		if len(os.Getenv("DNS_READ_KEYALGORITHM")) > 0 {
+			readKeyalgo = os.Getenv("DNS_READ_KEYALGORITHM")
+		}
+		if len(os.Getenv("DNS_READ_KEYSECRET")) > 0 {
+			readKeysecret = os.Getenv("DNS_READ_KEYSECRET")
+		}
+	}
+
+	dns_updater := DNSUpdater{}
 	config := Config{
 		server:    server,
 		port:      port,
@@ -137,8 +228,25 @@ func configureProvider(d *schema.ResourceData) (interface{}, error) {
 		keyalgo:   keyalgo,
 		keysecret: keysecret,
 	}
+	readConfig := Config{
+		server:    readServer,
+		port:      readPort,
+		keyname:   readKeyname,
+		keyalgo:   readKeyalgo,
+		keysecret: readKeysecret,
+	}
+	update, err := config.Client()
+	if err != nil {
+		return nil, err
+	}
+	dns_updater.Update = update.(*DNSClient)
+	read, err := readConfig.Client()
+	if err != nil {
+		return nil, err
+	}
+	dns_updater.Read = read.(*DNSClient)
 
-	return config.Client()
+	return &dns_updater, nil
 }
 
 func getAVal(record interface{}) (string, error) {

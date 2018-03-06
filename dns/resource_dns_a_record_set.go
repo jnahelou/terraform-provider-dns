@@ -72,11 +72,17 @@ func resourceDnsARecordSetRead(d *schema.ResourceData, meta interface{}) error {
 
 		rec_fqdn := fmt.Sprintf("%s.%s", rec_name, rec_zone)
 
-		c := meta.(*DNSClient).c
-		srv_addr := meta.(*DNSClient).srv_addr
+		c := meta.(*DNSUpdater).Read.c
+		srv_addr := meta.(*DNSUpdater).Read.srv_addr
+		keyname := meta.(*DNSUpdater).Read.keyname
+		keyalgo := meta.(*DNSUpdater).Read.keyalgo
 
 		msg := new(dns.Msg)
 		msg.SetQuestion(rec_fqdn, dns.TypeA)
+
+		if keyname != "" {
+			msg.SetTsig(keyname, keyalgo, 300, time.Now().Unix())
+		}
 
 		r, _, err := c.Exchange(msg, srv_addr)
 		if err != nil {
@@ -116,7 +122,7 @@ func resourceDnsARecordSetRead(d *schema.ResourceData, meta interface{}) error {
 		}
 		return nil
 	} else {
-		return fmt.Errorf("update server is not set")
+		return fmt.Errorf("update or read server required")
 	}
 }
 
@@ -134,10 +140,10 @@ func resourceDnsARecordSetUpdate(d *schema.ResourceData, meta interface{}) error
 
 		rec_fqdn := fmt.Sprintf("%s.%s", rec_name, rec_zone)
 
-		c := meta.(*DNSClient).c
-		srv_addr := meta.(*DNSClient).srv_addr
-		keyname := meta.(*DNSClient).keyname
-		keyalgo := meta.(*DNSClient).keyalgo
+		c := meta.(*DNSUpdater).Update.c
+		srv_addr := meta.(*DNSUpdater).Update.srv_addr
+		keyname := meta.(*DNSUpdater).Update.keyname
+		keyalgo := meta.(*DNSUpdater).Update.keyalgo
 
 		msg := new(dns.Msg)
 
@@ -198,10 +204,10 @@ func resourceDnsARecordSetDelete(d *schema.ResourceData, meta interface{}) error
 
 		rec_fqdn := fmt.Sprintf("%s.%s", rec_name, rec_zone)
 
-		c := meta.(*DNSClient).c
-		srv_addr := meta.(*DNSClient).srv_addr
-		keyname := meta.(*DNSClient).keyname
-		keyalgo := meta.(*DNSClient).keyalgo
+		c := meta.(*DNSUpdater).Update.c
+		srv_addr := meta.(*DNSUpdater).Update.srv_addr
+		keyname := meta.(*DNSUpdater).Update.keyname
+		keyalgo := meta.(*DNSUpdater).Update.keyalgo
 
 		msg := new(dns.Msg)
 

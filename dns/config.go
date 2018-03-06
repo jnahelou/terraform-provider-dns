@@ -2,10 +2,11 @@ package dns
 
 import (
 	"fmt"
-	"github.com/miekg/dns"
 	"log"
 	"net"
 	"strconv"
+
+	"github.com/miekg/dns"
 )
 
 type Config struct {
@@ -22,6 +23,11 @@ type DNSClient struct {
 	keyname   string
 	keysecret string
 	keyalgo   string
+}
+
+type DNSUpdater struct {
+	Update *DNSClient
+	Read   *DNSClient
 }
 
 // Configures and returns a fully initialized DNSClient
